@@ -22,6 +22,14 @@
     "win": {
       "target": "nsis",
       "icon": "public/logo.ico"
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "icon": "public/icon.icns",
+      "identity": null
     }
   },
   "devDependencies": {
