@@ -116,7 +116,25 @@ const translations = {
     deleteNoteTitle: "Delete this note?",
     editNote: "Edit Note",
     noteTitle: "Note Title",
-    noteContent: "Note Content"
+    noteContent: "Note Content",
+    root: "Root",
+    newFolderTitle: "New Folder",
+    folderNamePlaceholder: "Folder Name",
+    create: "Create",
+    pdfAttached: "PDF file attached and will be saved locally.",
+    or: "Or",
+    noContent: "No content...",
+    loadingEngine: "Loading render engine...",
+    startWriting: "Start writing your thoughts...",
+    folderOpenAlert: "Folder opening is only available in desktop app.",
+    copyPdfError: "Failed to copy PDF file.",
+    saveMetaError: "Failed to save metadata.",
+    uncategorized: "Uncategorized",
+    pathExample: "e.g. D:\\Papers",
+    venueExample: "e.g. CVPR",
+    urlExample: "https://...",
+    adjustDensity: "Adjust Display Density",
+    pdfPreview: "PDF Preview"
   },
   zh: {
     library: "资料库",
@@ -193,7 +211,25 @@ const translations = {
     deleteNoteTitle: "删除这个笔记？",
     editNote: "编辑笔记",
     noteTitle: "笔记标题",
-    noteContent: "笔记内容"
+    noteContent: "笔记内容",
+    root: "根目录",
+    newFolderTitle: "新建文件夹",
+    folderNamePlaceholder: "文件夹名称",
+    create: "创建",
+    pdfAttached: "已附带 PDF 文件，将保存到本地。",
+    or: "或",
+    noContent: "暂无笔记内容...",
+    loadingEngine: "正在加载渲染引擎...",
+    startWriting: "开始记录你的想法...",
+    folderOpenAlert: "打开文件夹功能仅在桌面版可用。",
+    copyPdfError: "复制 PDF 文件失败。",
+    saveMetaError: "保存元数据失败。",
+    uncategorized: "未分类",
+    pathExample: "例如 D:\\Papers",
+    venueExample: "例如 CVPR",
+    urlExample: "https://...",
+    adjustDensity: "调整显示密度",
+    pdfPreview: "PDF 预览"
   }
 };
 
@@ -255,7 +291,7 @@ const FileSystemDB = {
     });
   },
 
-  save: (basePath, paper, fileSource) => {
+  save: (basePath, paper, fileSource, t = (k) => k) => {
     // fileSource can be a File object (from drop) or a string path (from dialog)
     if (!isElectron()) return Promise.resolve(paper);
     const { fs, path } = FileSystemDB;
@@ -312,7 +348,7 @@ const FileSystemDB = {
             newPaper.hasPdf = true;
           } catch (copyErr) {
             console.error("Failed to copy PDF:", copyErr);
-            alert(`Failed to copy PDF file.\nSource: ${sourcePath}\nDest: ${destPath}\nError: ${copyErr.message}`);
+            alert(`${t('copyPdfError')}\nSource: ${sourcePath}\nDest: ${destPath}\nError: ${copyErr.message}`);
           }
         } else if (fileSource) {
           console.warn("File source present but no path property found.", fileSource);
@@ -330,7 +366,7 @@ const FileSystemDB = {
         resolve(newPaper);
       } catch (e) {
         console.error("FS Save Error:", e);
-        alert(`Failed to save metadata: ${e.message}`);
+        alert(`${t('saveMetaError')}: ${e.message}`);
         resolve(paper);
       }
     });
@@ -613,7 +649,7 @@ const formatTime = (timestamp) => {
 };
 
 // --- Advanced Markdown Renderer ---
-const AdvancedMarkdown = ({ content }) => {
+const AdvancedMarkdown = ({ content, noContentText = "暂无笔记内容...", loadingText = "正在加载渲染引擎..." }) => {
   const [libsLoaded, setLibsLoaded] = useState(false);
   const containerRef = useRef(null);
 
@@ -708,8 +744,8 @@ const AdvancedMarkdown = ({ content }) => {
     if (containerRef.current) containerRef.current.innerHTML = html;
   }, [content, libsLoaded]);
 
-  if (!content) return <p className="text-zinc-400 italic text-sm mt-4">暂无笔记内容...</p>;
-  if (!libsLoaded) return <div className="flex items-center gap-2 text-zinc-400 text-sm"><Loader2 className="animate-spin" size={14} /> 正在加载渲染引擎...</div>;
+  if (!content) return <p className="text-zinc-400 italic text-sm mt-4">{noContentText}</p>;
+  if (!libsLoaded) return <div className="flex items-center gap-2 text-zinc-400 text-sm"><Loader2 className="animate-spin" size={14} /> {loadingText}</div>;
 
   return (
     <>
@@ -932,7 +968,7 @@ export default function K1ssaper() {
       }
 
       if (isElectron()) {
-        await FileSystemDB.save(localPath, editingPaper ? { ...docData, id: editingPaper.id } : docData, uploadFile);
+        await FileSystemDB.save(localPath, editingPaper ? { ...docData, id: editingPaper.id } : docData, uploadFile, t);
       }
       setLocalRefreshTrigger(prev => prev + 1);
     } catch (error) { console.error("Error saving paper:", error); } finally {
@@ -1064,7 +1100,7 @@ export default function K1ssaper() {
       const { shell } = window.require('electron');
       shell.openPath(localPath);
     } else {
-      alert("Folder opening is only available in desktop app.");
+      alert(t('folderOpenAlert'));
     }
   };
 
@@ -1375,7 +1411,7 @@ export default function K1ssaper() {
                   >
                     <div className="flex items-center gap-3 overflow-hidden">
                       <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${groupStyles.dot}`}></div>
-                      <span className="truncate">{group}</span>
+                      <span className="truncate">{group === 'Uncategorized' ? t('uncategorized') : group}</span>
                     </div>
                     <span className={`text-[11px] px-2 py-0.5 rounded-full transition-colors ${isActive ? 'bg-zinc-100 text-zinc-600' : 'text-zinc-400 bg-transparent'}`}>
                       {count}
@@ -1473,7 +1509,7 @@ export default function K1ssaper() {
                             localStorage.setItem('kpapers_local_path', e.target.value);
                           }}
                           className="text-sm font-mono text-zinc-700 w-full bg-transparent border-none focus:ring-0 p-0 truncate"
-                          placeholder="e.g. D:\Papers"
+                          placeholder={t('pathExample')}
                         />
                       </div>
                       <div className="flex gap-2">
@@ -1535,7 +1571,7 @@ export default function K1ssaper() {
                       className={`flex items-center gap-1 px-2 py-1 rounded-lg text-sm font-medium transition-all border-2 ${dragOverId === 'root' ? 'border-blue-500 bg-blue-50 text-blue-700' : (!currentFolderId ? 'border-transparent bg-zinc-100 text-zinc-900' : 'border-transparent text-zinc-500 hover:bg-zinc-50 hover:text-zinc-900')}`}
                     >
                       <HardDrive size={14} />
-                      <span>Root</span>
+                      <span>{t('root')}</span>
                     </button>
                     {(() => {
                       const path = [];
@@ -1700,7 +1736,7 @@ export default function K1ssaper() {
                       value={zoomLevel}
                       onChange={(e) => setZoomLevel(parseInt(e.target.value))}
                       className="w-24 h-1 bg-zinc-200 rounded-lg appearance-none cursor-pointer accent-zinc-800 hover:accent-zinc-600 transition-all"
-                      title="Adjust Display Density"
+                      title={t('adjustDensity')}
                     />
                     <ZoomIn size={14} className="text-zinc-400" />
                   </div>
@@ -1962,7 +1998,7 @@ export default function K1ssaper() {
                   <iframe
                     src={getPdfUrl(selectedPaper)}
                     className="w-full h-full border-none"
-                    title="PDF Preview"
+                    title={t('pdfPreview')}
                   />
                 </div>
               ) : (
@@ -1999,7 +2035,7 @@ export default function K1ssaper() {
                       <textarea
                         className="w-full flex-1 bg-transparent border-none focus:ring-0 text-sm leading-7 text-zinc-700 placeholder:text-zinc-300 font-mono resize-none selection:bg-blue-100 selection:text-blue-700 caret-blue-600 outline-none pb-32"
                         style={{ minHeight: '60vh' }}
-                        placeholder="Start writing your thoughts..."
+                        placeholder={t('startWriting')}
                         value={selectedPaper.notes || ''}
                         onChange={(e) => setSelectedPaper({ ...selectedPaper, notes: e.target.value })}
                         onBlur={(e) => updateNotes(selectedPaper.id, e.target.value)}
@@ -2007,7 +2043,7 @@ export default function K1ssaper() {
                       ></textarea>
                     ) : (
                       <div className="prose prose-lg prose-zinc max-w-none pb-32">
-                        <AdvancedMarkdown content={selectedPaper.notes} />
+                        <AdvancedMarkdown content={selectedPaper.notes} noContentText={t('noContent')} loadingText={t('loadingEngine')} />
                       </div>
                     )}
                   </div>
@@ -2105,7 +2141,7 @@ export default function K1ssaper() {
 
                   <div className="mt-6 flex items-center gap-4">
                     <div className="h-px bg-zinc-100 flex-1"></div>
-                    <span className="text-xs text-zinc-400 font-medium uppercase tracking-wide">Or</span>
+                    <span className="text-xs text-zinc-400 font-medium uppercase tracking-wide">{t('or')}</span>
                     <div className="h-px bg-zinc-100 flex-1"></div>
                   </div>
 
@@ -2144,7 +2180,7 @@ export default function K1ssaper() {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider mb-2 ml-1">{t('venue')}</label>
-                      <input type="text" className="w-full px-4 py-3 bg-zinc-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 focus:bg-white transition-all placeholder:font-normal" placeholder="e.g. CVPR" value={formData.venue} onChange={e => setFormData({ ...formData, venue: e.target.value })} />
+                      <input type="text" className="w-full px-4 py-3 bg-zinc-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 focus:bg-white transition-all placeholder:font-normal" placeholder={t('venueExample')} value={formData.venue} onChange={e => setFormData({ ...formData, venue: e.target.value })} />
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider mb-2 ml-1">{t('year')}</label>
@@ -2200,13 +2236,13 @@ export default function K1ssaper() {
 
                   <div>
                     <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider mb-2 ml-1">{t('link')}</label>
-                    <input type="text" className="w-full px-4 py-3 bg-zinc-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 focus:bg-white transition-all placeholder:font-normal" placeholder="https://..." value={formData.url} onChange={e => setFormData({ ...formData, url: e.target.value })} />
+                    <input type="text" className="w-full px-4 py-3 bg-zinc-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 focus:bg-white transition-all placeholder:font-normal" placeholder={t('urlExample')} value={formData.url} onChange={e => setFormData({ ...formData, url: e.target.value })} />
                   </div>
 
                   {uploadFile && (
                     <div className="flex items-center gap-2 px-4 py-3 bg-blue-50 text-blue-700 rounded-xl text-xs font-medium border border-blue-100">
                       <FileIcon size={14} />
-                      <span>PDF file attached and will be saved locally.</span>
+                      <span>{t('pdfAttached')}</span>
                     </div>
                   )}
 
@@ -2260,7 +2296,7 @@ export default function K1ssaper() {
                   />
                 )}
                 <div className={`flex-1 h-full overflow-y-auto ${isNotePreviewFullscreen ? 'bg-white max-w-4xl mx-auto w-full px-8 py-12' : 'p-4 bg-white border border-zinc-100 rounded-xl'}`}>
-                  <AdvancedMarkdown content={noteFormData.content} />
+                  <AdvancedMarkdown content={noteFormData.content} noContentText={t('noContent')} loadingText={t('loadingEngine')} />
                 </div>
               </div>
             </div>
@@ -2272,19 +2308,19 @@ export default function K1ssaper() {
       {isFolderModalOpen && (
         <div className="fixed inset-0 bg-zinc-900/20 backdrop-blur-sm z-[300] flex items-center justify-center p-4">
           <div className="bg-white/95 backdrop-blur-2xl rounded-[32px] shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-300 border border-white/40 ring-1 ring-black/5 p-6">
-            <h3 className="font-bold text-xl text-zinc-900 mb-4">New Folder</h3>
+            <h3 className="font-bold text-xl text-zinc-900 mb-4">{t('newFolderTitle')}</h3>
             <input
               type="text"
               className="w-full px-4 py-3 bg-zinc-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 focus:bg-white transition-all placeholder:font-normal mb-6"
-              placeholder="Folder Name"
+              placeholder={t('folderNamePlaceholder')}
               value={folderName}
               onChange={e => setFolderName(e.target.value)}
               autoFocus
               onKeyDown={(e) => { if (e.key === 'Enter') handleCreateFolder(); }}
             />
             <div className="flex justify-end gap-3">
-              <button onClick={() => setIsFolderModalOpen(false)} className="px-6 py-2.5 rounded-full border border-zinc-200 text-sm font-semibold text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900 transition-colors">Cancel</button>
-              <button onClick={handleCreateFolder} disabled={!folderName.trim()} className="px-6 py-2.5 rounded-full bg-black text-white text-sm font-semibold hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-zinc-300 disabled:opacity-50 disabled:cursor-not-allowed transition-all">Create</button>
+              <button onClick={() => setIsFolderModalOpen(false)} className="px-6 py-2.5 rounded-full border border-zinc-200 text-sm font-semibold text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900 transition-colors">{t('cancel')}</button>
+              <button onClick={handleCreateFolder} disabled={!folderName.trim()} className="px-6 py-2.5 rounded-full bg-black text-white text-sm font-semibold hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-zinc-300 disabled:opacity-50 disabled:cursor-not-allowed transition-all">{t('create')}</button>
             </div>
           </div>
         </div>
