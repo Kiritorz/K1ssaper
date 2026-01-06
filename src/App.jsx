@@ -51,16 +51,6 @@ import {
   RefreshCw
 } from 'lucide-react';
 
-
-
-
-
-
-
-
-
-
-
 export default function K1ssaper() {
   const [papers, setPapers] = useState([]);
   const [notes, setNotes] = useState([]);
@@ -804,8 +794,8 @@ export default function K1ssaper() {
           <div className="flex flex-col">
             <span className="text-sm font-bold text-zinc-800">
               {storageMode === 'supabase'
-                ? (loading ? 'Connecting...' : (isSupabaseConnected ? 'Supabase User' : 'Disconnected'))
-                : 'Local User'}
+                ? (loading ? t('connecting') : (isSupabaseConnected ? t('supabaseUser') : t('disconnected')))
+                : t('localUser')}
             </span>
             <span className={`text-[10px] font-medium uppercase tracking-wide flex items-center gap-1 ${storageMode === 'supabase' && !isSupabaseConnected ? 'text-amber-600' : 'text-zinc-400'
               }`}>
@@ -813,7 +803,7 @@ export default function K1ssaper() {
                 ? (isSupabaseConnected ? <Globe size={10} /> : <AlertCircle size={10} />)
                 : <HardDrive size={10} />}
               {storageMode === 'supabase'
-                ? (loading ? 'Checking...' : (isSupabaseConnected ? t('onlineDB') : 'Check Connection'))
+                ? (loading ? t('checking') : (isSupabaseConnected ? t('onlineDB') : t('checkConnection')))
                 : t('localStorage')}
             </span>
           </div>
@@ -897,7 +887,7 @@ export default function K1ssaper() {
                       <div className="bg-zinc-50 rounded-2xl border border-zinc-200 p-6 animate-in slide-in-from-top-2">
                         <div className="space-y-4">
                           <div>
-                            <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider mb-2">Supabase URL</label>
+                            <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider mb-2">{t('supabaseUrlLabel')}</label>
                             <input
                               type="text"
                               className="w-full px-4 py-2 bg-white border border-zinc-200 rounded-xl text-sm"
@@ -911,7 +901,7 @@ export default function K1ssaper() {
                             />
                           </div>
                           <div>
-                            <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider mb-2">Supabase Key (Anon Public)</label>
+                            <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider mb-2">{t('supabaseKeyLabel')}</label>
                             <input
                               type="password"
                               className="w-full px-4 py-2 bg-white border border-zinc-200 rounded-xl text-sm"
@@ -930,14 +920,14 @@ export default function K1ssaper() {
                               onClick={async () => {
                                 if (isSyncing) return;
                                 setIsSyncing(true);
-                                setSyncProgress('Starting sync...');
+                                setSyncProgress(t('syncStart'));
                                 try {
                                   const result = await SupabaseDB.syncFromLocal(supabaseConfig, localPath, (msg) => setSyncProgress(msg));
-                                  setSyncProgress(`Sync Complete! Skipped ${result.skipped} items.`);
+                                  setSyncProgress(t('syncCompleteSkipped', { skipped: result.skipped }));
                                   setLocalRefreshTrigger(prev => prev + 1);
                                   setTimeout(() => setSyncProgress(''), 5000);
                                 } catch (e) {
-                                  setSyncProgress(`Error: ${e.message}`);
+                                  setSyncProgress(t('syncError', { message: e.message }));
                                 } finally {
                                   setIsSyncing(false);
                                 }
@@ -946,12 +936,12 @@ export default function K1ssaper() {
                               className={`w-full py-2.5 bg-black text-white rounded-xl text-sm font-bold shadow-lg shadow-zinc-200 transition-all flex items-center justify-center gap-2 ${isSyncing ? 'opacity-70 cursor-not-allowed' : 'hover:scale-[1.01] active:scale-[0.99]'}`}
                             >
                               {isSyncing ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
-                              {isSyncing ? 'Syncing...' : 'Sync Local Data to Cloud'}
+                              {isSyncing ? t('syncingBtn') : t('syncBtn')}
                             </button>
                             {syncProgress && <p className="text-center text-xs text-zinc-500 mt-2 font-mono">{syncProgress}</p>}
                           </div>
                           <p className="text-xs text-zinc-400 mt-4">
-                            Requires standard tables: 'papers', 'notes' and storage bucket 'pdfs'.
+                            {t('supabaseRequirements')}
                           </p>
                         </div>
                       </div>
@@ -1018,13 +1008,13 @@ export default function K1ssaper() {
                       </div>
                       <div>
                         <div className="font-bold text-zinc-900 text-lg">
-                          {storageMode === 'supabase' ? 'Supabase User' : 'Local User'}
+                          {storageMode === 'supabase' ? t('supabaseUser') : t('localUser')}
                         </div>
                         <div className="text-sm text-zinc-500">
                           {storageMode === 'supabase'
-                            ? (loading ? 'Verifying Connection...' : (isSupabaseConnected
-                              ? (supabaseConfig.url ? supabaseConfig.url.replace(/^https?:\/\//, '').split('/')[0] : 'Connected')
-                              : 'Connection Failed - Check Settings'))
+                            ? (loading ? t('verifyingConnection') : (isSupabaseConnected
+                              ? (supabaseConfig.url ? supabaseConfig.url.replace(/^https?:\/\//, '').split('/')[0] : t('online'))
+                              : t('connectionFailed')))
                             : t('proUser')}
                         </div>
                       </div>
@@ -1033,7 +1023,7 @@ export default function K1ssaper() {
                         : 'bg-zinc-200 text-zinc-600'
                         }`}>
                         {storageMode === 'supabase'
-                          ? (loading ? 'Checking...' : (isSupabaseConnected ? t('online') : 'Offline'))
+                          ? (loading ? t('checking') : (isSupabaseConnected ? t('online') : t('offline')))
                           : t('offline')}
                       </div>
                     </div>
