@@ -1,4 +1,14 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
+import { translations } from './constants/translations';
+import { FileSystemDB, isElectron } from './lib/fileSystemDB';
+import { IndexedDB } from './lib/indexedDB';
+import { SupabaseDB } from './lib/supabaseDB';
+import { parseGroups, formatTime, getGroupStyles, isMac } from './lib/utils';
+import AdvancedMarkdown from './components/AdvancedMarkdown';
+import UploadModal from './components/UploadModal';
+import NoteModal from './components/NoteModal';
+import FolderModal from './components/FolderModal';
+import { createClient } from '@supabase/supabase-js';
 import {
   BookOpen,
   Upload,
@@ -23,6 +33,7 @@ import {
   ExternalLink,
   Quote,
   AlertTriangle,
+  AlertCircle,
   Settings,
   HardDrive,
   Download,
@@ -36,704 +47,19 @@ import {
   Folder,
   Edit2,
   CheckCircle2,
-  Circle
+  Circle,
+  RefreshCw
 } from 'lucide-react';
 
-// --- Translation Dictionary ---
-const translations = {
-  en: {
-    library: "Library",
-    settings: "Settings",
-    newPaper: "New Paper",
-    filters: "FILTERS",
-    groupsHeader: "GROUPS",
-    allPapers: "All Papers",
-    filterRead: "Read",
-    filterUnread: "Unread",
-    searchPlaceholder: "Search...",
-    syncing: "Syncing Library...",
-    noPapers: "No papers found",
-    noPapersSub: "Try adjusting your search or add a new paper.",
-    title: "Title",
-    authors: "Authors",
-    venue: "Venue",
-    year: "Year",
-    group: "Groups",
-    updatedAt: "Updated",
-    localStorage: "Local Storage",
-    onlineDB: "Online DB",
-    storageMode: "Storage Mode",
-    storageLocation: "Storage Location",
-    currentPath: "Current Path",
-    changeFolder: "Change Folder",
-    openFolder: "Open Folder",
-    account: "Account",
-    proUser: "Pro User",
-    offline: "Offline",
-    online: "Online",
-    language: "Language",
-    interfaceLanguage: "Interface Language",
-    editDetails: "Edit Details",
-    addPaper: "Add Paper",
-    paperDetails: "Paper Details",
-    dropPdf: "Click to Select PDF",
-    autoExtract: "We'll automatically extract the title for you. (PDF will be saved in Local Mode)",
-    enterManually: "Enter Manually",
-    summary: "Summary",
-    summaryPlaceholder: "Core idea in one sentence...",
-    link: "Link (URL)",
-    cancel: "Cancel",
-    savePaper: "Save Paper",
-    deleteTitle: "Delete this paper?",
-    deleteConfirm: 'Are you sure you want to delete "{title}"? This action cannot be undone.',
-    delete: "Delete",
-    write: "Write",
-    read: "Read",
-    pdf: "PDF",
-    close: "Close",
-    pdfAvailable: "PDF Available",
-    openExternal: "Open External Link",
-    downloadPdf: "Download PDF",
-    locatePdf: "Locate PDF File",
-    exitFullscreen: "Exit Fullscreen",
-    fullscreen: "Fullscreen",
-    localDesc: "Select a folder to store all your data including PDFs.",
-    onlineDesc: "Metadata only. Syncs across devices.",
-    noteChanges: "Note: Switching modes will change the library view. Data is stored independently.",
-    selectOrCreate: "Select or create (comma separated)...",
-    commaSeparated: "Comma separated...",
-    enterTitle: "Enter paper title...",
-    markRead: "Mark as Read",
-    markUnread: "Mark as Unread",
-    notes: "Notes",
-    newNote: "New Note",
-    searchNotes: "Search notes...",
-    noNotes: "No notes found",
-    noNotesSub: "Create a new note to get started.",
-    deleteNoteConfirm: 'Are you sure you want to delete "{title}"?',
-    deleteFolderTitle: "Delete this folder?",
-    deleteNoteTitle: "Delete this note?",
-    editNote: "Edit Note",
-    noteTitle: "Note Title",
-    noteContent: "Note Content"
-  },
-  zh: {
-    library: "资料库",
-    settings: "设置",
-    newPaper: "录入新论文",
-    filters: "筛选",
-    groupsHeader: "分组",
-    allPapers: "全部论文",
-    filterRead: "已读",
-    filterUnread: "未读",
-    searchPlaceholder: "搜索标题、作者...",
-    syncing: "正在同步资料库...",
-    noPapers: "未找到论文",
-    noPapersSub: "请尝试调整搜索词或录入新论文。",
-    title: "标题",
-    authors: "作者",
-    venue: "发表处",
-    year: "年份",
-    group: "分组标签",
-    updatedAt: "笔记更新",
-    localStorage: "本地存储",
-    onlineDB: "在线数据库",
-    storageMode: "存储模式",
-    storageLocation: "存储位置",
-    currentPath: "当前路径",
-    changeFolder: "选择文件夹...",
-    openFolder: "打开文件夹",
-    account: "账户",
-    proUser: "专业版",
-    offline: "离线",
-    online: "在线",
-    language: "语言",
-    interfaceLanguage: "界面语言",
-    editDetails: "编辑详情",
-    addPaper: "添加论文",
-    paperDetails: "论文详情",
-    dropPdf: "点击选择 PDF 文件",
-    autoExtract: "将自动提取标题（本地模式下会自动保存 PDF 文件）",
-    enterManually: "手动录入",
-    summary: "一句话总结",
-    summaryPlaceholder: "一句话概括核心思想...",
-    link: "链接 (URL)",
-    cancel: "取消",
-    savePaper: "保存",
-    deleteTitle: "删除这篇论文？",
-    deleteConfirm: '确定要删除 "{title}" 吗？此操作无法撤销。',
-    delete: "删除",
-    write: "笔记",
-    read: "阅读",
-    pdf: "原文",
-    close: "关闭",
-    pdfAvailable: "PDF 已就绪",
-    openExternal: "打开外部链接",
-    downloadPdf: "下载 PDF",
-    locatePdf: "定位 PDF 文件",
-    exitFullscreen: "退出全屏",
-    fullscreen: "全屏",
-    localDesc: "选择一个文件夹，所有数据（包括PDF）都将保存在此。",
-    onlineDesc: "仅同步元数据。支持多设备同步。",
-    noteChanges: "注意：切换模式将改变资料库视图。数据在各模式下独立存储。",
-    selectOrCreate: "选择或创建...",
-    commaSeparated: "用逗号分隔...",
-    enterTitle: "输入论文标题...",
-    markRead: "标记为已读",
-    markUnread: "标记为未读",
-    notes: "笔记",
-    newNote: "新建笔记",
-    searchNotes: "搜索笔记...",
-    noNotes: "未找到笔记",
-    noNotesSub: "创建一个新笔记开始记录。",
-    deleteNoteConfirm: '确定要删除 "{title}" 吗？',
-    deleteFolderTitle: "删除这个文件夹？",
-    deleteNoteTitle: "删除这个笔记？",
-    editNote: "编辑笔记",
-    noteTitle: "笔记标题",
-    noteContent: "笔记内容"
-  }
-};
 
-// --- Check Environment ---
-const isElectron = () => {
-  return typeof window !== 'undefined' && window.process && window.process.type === 'renderer';
-};
 
-// --- Detect MacOS ---
-const isMac = typeof navigator !== 'undefined' && /Mac/.test(navigator.userAgent);
 
-// --- Native File System DB (Electron) ---
-const FileSystemDB = {
-  get fs() { try { return window.require('fs'); } catch (e) { return null; } },
-  get path() { try { return window.require('path'); } catch (e) { return null; } },
 
-  // Ensure directories exist
-  init: (basePath) => {
-    if (!isElectron()) return;
-    const { fs, path } = FileSystemDB;
-    if (!fs || !path || !basePath) return;
 
-    try {
-      if (!fs.existsSync(basePath)) fs.mkdirSync(basePath, { recursive: true });
-      const pdfDir = path.join(basePath, 'pdfs');
-      if (!fs.existsSync(pdfDir)) fs.mkdirSync(pdfDir, { recursive: true });
-      const metaPath = path.join(basePath, 'metadata.json');
-      if (!fs.existsSync(metaPath)) fs.writeFileSync(metaPath, '[]');
-    } catch (e) {
-      console.error("FS Init Error:", e);
-    }
-  },
 
-  getAll: (basePath) => {
-    if (!isElectron()) return Promise.resolve([]);
-    const { fs, path } = FileSystemDB;
-    if (!fs || !path || !basePath) return Promise.resolve([]);
 
-    return new Promise((resolve) => {
-      try {
-        FileSystemDB.init(basePath);
-        const metaPath = path.join(basePath, 'metadata.json');
-        if (!fs.existsSync(metaPath)) {
-          resolve([]);
-          return;
-        }
-        const data = fs.readFileSync(metaPath, 'utf-8');
-        // Clean up data: remove localPdfPath from memory if exists, rely on hasPdf
-        const papers = JSON.parse(data).map(p => {
-          if (!p.hasPdf && p.localPdfPath) p.hasPdf = true; // Legacy migration
-          if (p.localPdfPath) delete p.localPdfPath; // Remove field
-          return p;
-        });
-        resolve(papers);
-      } catch (e) {
-        console.error("FS Read Error:", e);
-        resolve([]);
-      }
-    });
-  },
 
-  save: (basePath, paper, fileSource) => {
-    // fileSource can be a File object (from drop) or a string path (from dialog)
-    if (!isElectron()) return Promise.resolve(paper);
-    const { fs, path } = FileSystemDB;
-    if (!fs || !path || !basePath) {
-      console.error("FS Save Failed: Missing dependencies or path", { fs: !!fs, path: !!path, basePath });
-      return Promise.resolve(paper);
-    }
 
-    return new Promise((resolve) => {
-      try {
-        FileSystemDB.init(basePath);
-        const metaPath = path.join(basePath, 'metadata.json');
-        let currentData = [];
-        if (fs.existsSync(metaPath)) {
-          currentData = JSON.parse(fs.readFileSync(metaPath, 'utf-8') || '[]');
-        }
-
-        const paperId = paper.id || crypto.randomUUID();
-
-        const newPaper = {
-          ...paper,
-          id: paperId,
-          updatedAt: new Date().toISOString(),
-          createdAt: paper.createdAt || new Date().toISOString()
-        };
-
-        // Ensure localPdfPath is removed
-        delete newPaper.localPdfPath;
-
-        // --- PDF Saving Logic ---
-        let sourcePath = null;
-
-        // Case 1: String path (from ipcRenderer dialog)
-        if (typeof fileSource === 'string') {
-          sourcePath = fileSource;
-        }
-        // Case 2: File object (from Drag and Drop)
-        else if (fileSource && fileSource.path) {
-          sourcePath = fileSource.path;
-        }
-
-        if (sourcePath) {
-          const pdfDir = path.join(basePath, 'pdfs');
-          if (!fs.existsSync(pdfDir)) fs.mkdirSync(pdfDir, { recursive: true });
-
-          const extension = path.extname(sourcePath) || '.pdf';
-          const destName = `${newPaper.id}${extension}`;
-          const destPath = path.join(pdfDir, destName);
-
-          console.log(`FS: Copying PDF from [${sourcePath}] to [${destPath}]`);
-
-          try {
-            fs.copyFileSync(sourcePath, destPath);
-            newPaper.hasPdf = true;
-          } catch (copyErr) {
-            console.error("Failed to copy PDF:", copyErr);
-            alert(`Failed to copy PDF file.\nSource: ${sourcePath}\nDest: ${destPath}\nError: ${copyErr.message}`);
-          }
-        } else if (fileSource) {
-          console.warn("File source present but no path property found.", fileSource);
-        }
-
-        // Update or Add
-        const idx = currentData.findIndex(p => p.id === newPaper.id);
-        if (idx >= 0) {
-          currentData[idx] = { ...currentData[idx], ...newPaper };
-        } else {
-          currentData.push(newPaper);
-        }
-
-        fs.writeFileSync(metaPath, JSON.stringify(currentData, null, 2));
-        resolve(newPaper);
-      } catch (e) {
-        console.error("FS Save Error:", e);
-        alert(`Failed to save metadata: ${e.message}`);
-        resolve(paper);
-      }
-    });
-  },
-
-  delete: (basePath, id) => {
-    if (!isElectron()) return Promise.resolve();
-    const { fs, path } = FileSystemDB;
-    if (!fs || !path || !basePath) return Promise.resolve();
-
-    return new Promise((resolve) => {
-      try {
-        const metaPath = path.join(basePath, 'metadata.json');
-        if (!fs.existsSync(metaPath)) { resolve(); return; }
-
-        let currentData = JSON.parse(fs.readFileSync(metaPath, 'utf-8') || '[]');
-        const paper = currentData.find(p => p.id === id);
-
-        // Delete PDF file based on Computed Path (Standard UUID name)
-        const pdfPath = path.join(basePath, 'pdfs', `${id}.pdf`);
-        try {
-          if (fs.existsSync(pdfPath)) {
-            fs.unlinkSync(pdfPath);
-          }
-        } catch (err) {
-          console.error("Failed to delete PDF file (non-fatal):", err);
-        }
-
-        // Cleanup legacy paths if they happen to exist
-        if (paper && paper.localPdfPath && paper.localPdfPath !== pdfPath) {
-          try {
-            if (fs.existsSync(paper.localPdfPath)) fs.unlinkSync(paper.localPdfPath);
-          } catch (e) { }
-        }
-
-        currentData = currentData.filter(p => p.id !== id);
-        fs.writeFileSync(metaPath, JSON.stringify(currentData, null, 2));
-        resolve();
-      } catch (e) {
-        console.error("FS Delete Error:", e);
-        resolve();
-      }
-    });
-  },
-
-  getNotes: (basePath) => {
-    if (!isElectron()) return Promise.resolve([]);
-    const { fs, path } = FileSystemDB;
-    if (!fs || !path || !basePath) return Promise.resolve([]);
-
-    return new Promise((resolve) => {
-      try {
-        FileSystemDB.init(basePath);
-        const notesPath = path.join(basePath, 'notes.json');
-        if (!fs.existsSync(notesPath)) {
-          resolve([]);
-          return;
-        }
-        const data = fs.readFileSync(notesPath, 'utf-8');
-        resolve(JSON.parse(data));
-      } catch (e) {
-        console.error("FS Read Notes Error:", e);
-        resolve([]);
-      }
-    });
-  },
-
-  saveNote: (basePath, note) => {
-    if (!isElectron()) return Promise.resolve(note);
-    const { fs, path } = FileSystemDB;
-    if (!fs || !path || !basePath) return Promise.resolve(note);
-
-    return new Promise((resolve) => {
-      try {
-        FileSystemDB.init(basePath);
-        const notesPath = path.join(basePath, 'notes.json');
-        let currentData = [];
-        if (fs.existsSync(notesPath)) {
-          currentData = JSON.parse(fs.readFileSync(notesPath, 'utf-8') || '[]');
-        }
-
-        const noteId = note.id || crypto.randomUUID();
-        const newNote = {
-          ...note,
-          id: noteId,
-          updatedAt: new Date().toISOString(),
-          createdAt: note.createdAt || new Date().toISOString()
-        };
-
-        const idx = currentData.findIndex(n => n.id === newNote.id);
-        if (idx >= 0) {
-          currentData[idx] = { ...currentData[idx], ...newNote };
-        } else {
-          currentData.push(newNote);
-        }
-
-        fs.writeFileSync(notesPath, JSON.stringify(currentData, null, 2));
-        resolve(newNote);
-      } catch (e) {
-        console.error("FS Save Note Error:", e);
-        resolve(note);
-      }
-    });
-  },
-
-  deleteNote: (basePath, id) => {
-    if (!isElectron()) return Promise.resolve();
-    const { fs, path } = FileSystemDB;
-    if (!fs || !path || !basePath) return Promise.resolve();
-
-    return new Promise((resolve) => {
-      try {
-        const notesPath = path.join(basePath, 'notes.json');
-        if (!fs.existsSync(notesPath)) { resolve(); return; }
-
-        let currentData = JSON.parse(fs.readFileSync(notesPath, 'utf-8') || '[]');
-
-        // Recursive delete logic
-        const idsToDelete = new Set([id]);
-        let changed = true;
-        while (changed) {
-          changed = false;
-          currentData.forEach(n => {
-            if (n.parentId && idsToDelete.has(n.parentId) && !idsToDelete.has(n.id)) {
-              idsToDelete.add(n.id);
-              changed = true;
-            }
-          });
-        }
-
-        currentData = currentData.filter(n => !idsToDelete.has(n.id));
-        fs.writeFileSync(notesPath, JSON.stringify(currentData, null, 2));
-        resolve();
-      } catch (e) {
-        console.error("FS Delete Note Error:", e);
-        resolve();
-      }
-    });
-  }
-};
-
-// --- Fallback Local Storage Engine (IndexedDB for Web Demo) ---
-const DB_NAME = 'KPapersLocalDB';
-const DB_VERSION = 2; // Incremented version
-const STORE_NAME = 'papers';
-const NOTES_STORE_NAME = 'notes';
-
-const IndexedDB = {
-  open: () => {
-    return new Promise((resolve, reject) => {
-      const request = indexedDB.open(DB_NAME, DB_VERSION);
-      request.onupgradeneeded = (event) => {
-        const db = event.target.result;
-        if (!db.objectStoreNames.contains(STORE_NAME)) {
-          db.createObjectStore(STORE_NAME, { keyPath: 'id' });
-        }
-        if (!db.objectStoreNames.contains(NOTES_STORE_NAME)) {
-          db.createObjectStore(NOTES_STORE_NAME, { keyPath: 'id' });
-        }
-      };
-      request.onsuccess = (event) => resolve(event.target.result);
-      request.onerror = (event) => reject(event.target.error);
-    });
-  },
-  getAll: async () => {
-    const db = await IndexedDB.open();
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction([STORE_NAME], 'readonly');
-      const store = transaction.objectStore(STORE_NAME);
-      const request = store.getAll();
-      request.onsuccess = () => resolve(request.result.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
-      request.onerror = () => reject(request.error);
-    });
-  },
-  getNotes: async () => {
-    const db = await IndexedDB.open();
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction([NOTES_STORE_NAME], 'readonly');
-      const store = transaction.objectStore(NOTES_STORE_NAME);
-      const request = store.getAll();
-      request.onsuccess = () => resolve(request.result.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
-      request.onerror = () => reject(request.error);
-    });
-  },
-  save: async (paper) => {
-    const db = await IndexedDB.open();
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction([STORE_NAME], 'readwrite');
-      const store = transaction.objectStore(STORE_NAME);
-      const item = { ...paper, id: paper.id || crypto.randomUUID(), createdAt: paper.createdAt || new Date().toISOString(), updatedAt: new Date().toISOString() };
-      const request = store.put(item);
-      request.onsuccess = () => resolve(item);
-      request.onerror = () => reject(request.error);
-    });
-  },
-  saveNote: async (note) => {
-    const db = await IndexedDB.open();
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction([NOTES_STORE_NAME], 'readwrite');
-      const store = transaction.objectStore(NOTES_STORE_NAME);
-      const item = { ...note, id: note.id || crypto.randomUUID(), createdAt: note.createdAt || new Date().toISOString(), updatedAt: new Date().toISOString() };
-      const request = store.put(item);
-      request.onsuccess = () => resolve(item);
-      request.onerror = () => reject(request.error);
-    });
-  },
-  delete: async (id) => {
-    const db = await IndexedDB.open();
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction([STORE_NAME], 'readwrite');
-      const store = transaction.objectStore(STORE_NAME);
-      const request = store.delete(id);
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(request.error);
-    });
-  },
-  deleteNote: async (id) => {
-    const db = await IndexedDB.open();
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction([NOTES_STORE_NAME], 'readwrite');
-      const store = transaction.objectStore(NOTES_STORE_NAME);
-      const request = store.delete(id);
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(request.error);
-    });
-  }
-};
-
-// --- Helper: Auto-generate consistent Apple-style pastel colors (Static Mapping) ---
-const groupColorPalette = [
-  { bg: 'bg-blue-50', text: 'text-blue-600', border: 'border-blue-200', dot: 'bg-blue-400' },
-  { bg: 'bg-emerald-50', text: 'text-emerald-600', border: 'border-emerald-200', dot: 'bg-emerald-400' },
-  { bg: 'bg-purple-50', text: 'text-purple-600', border: 'border-purple-200', dot: 'bg-purple-400' },
-  { bg: 'bg-amber-50', text: 'text-amber-600', border: 'border-amber-200', dot: 'bg-amber-400' },
-  { bg: 'bg-rose-50', text: 'text-rose-600', border: 'border-rose-200', dot: 'bg-rose-400' },
-  { bg: 'bg-cyan-50', text: 'text-cyan-600', border: 'border-cyan-200', dot: 'bg-cyan-400' },
-  { bg: 'bg-fuchsia-50', text: 'text-fuchsia-600', border: 'border-fuchsia-200', dot: 'bg-fuchsia-400' },
-  { bg: 'bg-orange-50', text: 'text-orange-600', border: 'border-orange-200', dot: 'bg-orange-400' },
-  { bg: 'bg-indigo-50', text: 'text-indigo-600', border: 'border-indigo-200', dot: 'bg-indigo-400' },
-  { bg: 'bg-teal-50', text: 'text-teal-600', border: 'border-teal-200', dot: 'bg-teal-400' },
-  { bg: 'bg-lime-50', text: 'text-lime-600', border: 'border-lime-200', dot: 'bg-lime-400' },
-  { bg: 'bg-sky-50', text: 'text-sky-600', border: 'border-sky-200', dot: 'bg-sky-400' },
-  { bg: 'bg-violet-50', text: 'text-violet-600', border: 'border-violet-200', dot: 'bg-violet-400' },
-  { bg: 'bg-pink-50', text: 'text-pink-600', border: 'border-pink-200', dot: 'bg-pink-400' },
-  { bg: 'bg-slate-100', text: 'text-slate-600', border: 'border-slate-200', dot: 'bg-slate-400' },
-  { bg: 'bg-red-50', text: 'text-red-600', border: 'border-red-200', dot: 'bg-red-400' },
-];
-
-const getGroupStyles = (groupName) => {
-  if (!groupName || groupName === 'Uncategorized') return { className: 'bg-zinc-100 text-zinc-500 border-zinc-200', dot: 'bg-zinc-400' };
-  if (groupName === 'All') return { className: 'bg-zinc-800 text-white border-zinc-800 shadow-sm', dot: 'bg-white' };
-
-  let hash = 0;
-  for (let i = 0; i < groupName.length; i++) {
-    hash = ((hash << 5) - hash) + groupName.charCodeAt(i);
-    hash |= 0;
-  }
-
-  hash = hash + groupName.length * 13;
-
-  const palette = groupColorPalette[Math.abs(hash) % groupColorPalette.length];
-  return {
-    className: `${palette.bg} ${palette.text} ${palette.border}`,
-    dot: palette.dot
-  };
-};
-
-// --- Helper: Parse Groups ---
-const parseGroups = (groupString) => {
-  if (!groupString) return [];
-  return groupString.split(/[,，]/).map(s => s.trim()).filter(Boolean);
-};
-
-// --- Helper: Format Timestamp ---
-const formatTime = (timestamp) => {
-  if (!timestamp) return '-';
-  const date = new Date(timestamp);
-  if (isNaN(date.getTime())) return '-';
-  return date.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' });
-};
-
-// --- Advanced Markdown Renderer ---
-const AdvancedMarkdown = ({ content }) => {
-  const [libsLoaded, setLibsLoaded] = useState(false);
-  const containerRef = useRef(null);
-
-  useEffect(() => {
-    const loadScript = (src, globalKey) => new Promise((resolve, reject) => {
-      if (window[globalKey]) return resolve();
-
-      const existingScript = document.querySelector(`script[src="${src}"]`);
-      if (existingScript) {
-        const interval = setInterval(() => {
-          if (window[globalKey]) {
-            clearInterval(interval);
-            resolve();
-          }
-        }, 50);
-        return;
-      }
-
-      const script = document.createElement('script');
-      script.src = src;
-      script.onload = () => {
-        if (window[globalKey]) resolve();
-        else {
-          const interval = setInterval(() => {
-            if (window[globalKey]) {
-              clearInterval(interval);
-              resolve();
-            }
-          }, 50);
-        }
-      };
-      script.onerror = reject;
-      document.head.appendChild(script);
-    });
-
-    const loadCSS = (href) => {
-      if (document.querySelector(`link[href="${href}"]`)) return;
-      const link = document.createElement('link');
-      link.rel = 'stylesheet';
-      link.href = href;
-      document.head.appendChild(link);
-    };
-
-    Promise.all([
-      loadScript('https://cdn.jsdelivr.net/npm/marked/marked.min.js', 'marked'),
-      loadScript('https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js', 'katex')
-    ]).then(() => {
-      loadCSS('https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css');
-      setLibsLoaded(true);
-    }).catch(err => console.error("Failed to load markdown libs", err));
-  }, []);
-
-  useEffect(() => {
-    if (!libsLoaded || !window.marked || !window.katex || !content) return;
-
-    window.marked.use({ gfm: true, breaks: true });
-
-    const mathBlocks = [];
-    // Pre-process local image paths (Windows)
-    let processedContent = content.replace(/!\[(.*?)\]\(([a-zA-Z]:[\\/][^)]+)\)/g, (match, alt, path) => {
-      const normalizedPath = path.replace(/\\/g, '/');
-      return `![${alt}](file:///${normalizedPath})`;
-    });
-
-    let protectedText = processedContent.replace(/\$\$([\s\S]+?)\$\$/g, (_, equation) => {
-      const id = mathBlocks.length;
-      mathBlocks.push({ type: 'block', equation });
-      return `MATHBLOCK${id}ENDMATHBLOCK`;
-    });
-
-    protectedText = protectedText.replace(/(\$((?:[^\\$]|\\.)+)\$|\\\(([\s\S]+?)\\\))/g, (_, __, dollarContent, parenContent) => {
-      const id = mathBlocks.length;
-      const equation = dollarContent || parenContent;
-      mathBlocks.push({ type: 'inline', equation });
-      return `MATHINLINE${id}ENDMATHINLINE`;
-    });
-
-    let html = window.marked.parse(protectedText);
-
-    mathBlocks.forEach((item, index) => {
-      try {
-        const rendered = window.katex.renderToString(item.equation, {
-          displayMode: item.type === 'block',
-          throwOnError: false,
-          output: 'html'
-        });
-        const token = item.type === 'block' ? `MATHBLOCK${index}ENDMATHBLOCK` : `MATHINLINE${index}ENDMATHINLINE`;
-        html = html.replace(new RegExp(`<p>${token}</p>`, 'g'), rendered).replace(new RegExp(token, 'g'), rendered);
-      } catch (e) { console.error("Math render error", e); }
-    });
-
-    if (containerRef.current) containerRef.current.innerHTML = html;
-  }, [content, libsLoaded]);
-
-  if (!content) return <p className="text-zinc-400 italic text-sm mt-4">暂无笔记内容...</p>;
-  if (!libsLoaded) return <div className="flex items-center gap-2 text-zinc-400 text-sm"><Loader2 className="animate-spin" size={14} /> 正在加载渲染引擎...</div>;
-
-  return (
-    <>
-      <style>{`
-        .markdown-body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif; font-size: 16px; line-height: 1.7; color: #333; }
-        .markdown-body h1 { font-size: 1.8em; font-weight: 700; margin-top: 1.5em; margin-bottom: 0.8em; letter-spacing: -0.02em; color: #111; }
-        .markdown-body h2 { font-size: 1.4em; font-weight: 600; margin-top: 1.4em; margin-bottom: 0.6em; letter-spacing: -0.01em; color: #111; }
-        .markdown-body h3 { font-size: 1.2em; font-weight: 600; margin-top: 1.2em; margin-bottom: 0.5em; color: #111; }
-        .markdown-body p { margin-bottom: 1.2em; }
-        .markdown-body blockquote { border-left: 3px solid #007AFF; padding-left: 1em; margin-left: 0; color: #666; font-style: italic; }
-        .markdown-body code { background: rgba(0,0,0,0.06); padding: 0.2em 0.4em; border-radius: 6px; color: #D63384; font-size: 0.9em; font-family: "SF Mono", Menlo, monospace; }
-        .markdown-body pre { background: #F5F5F7; padding: 20px; border-radius: 16px; overflow-x: auto; margin: 1.5em 0; border: 1px solid rgba(0,0,0,0.05); }
-        .markdown-body pre code { background: transparent; padding: 0; color: inherit; }
-        .markdown-body img { border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.08); margin: 2em auto; display: block; max-height: 500px; }
-        .markdown-body table { width: 100%; border-collapse: separate; border-spacing: 0; border: 1px solid #E5E5EA; border-radius: 12px; overflow: hidden; margin: 2em 0; }
-        .markdown-body th { background: #F9F9FB; padding: 12px 16px; text-align: left; font-weight: 600; font-size: 0.9em; color: #666; border-bottom: 1px solid #E5E5EA; }
-        .markdown-body td { padding: 12px 16px; border-bottom: 1px solid #E5E5EA; color: #333; }
-        .markdown-body tr:last-child td { border-bottom: none; }
-        .markdown-body ul { list-style-type: disc; padding-left: 1.5em; margin-bottom: 1.2em; }
-        .markdown-body ol { list-style-type: decimal; padding-left: 1.5em; margin-bottom: 1.2em; }
-        .katex-display { overflow-x: auto; overflow-y: hidden; padding: 1em 0; }
-      `}</style>
-      <div ref={containerRef} className="markdown-body px-1" />
-    </>
-  );
-};
 
 export default function K1ssaper() {
   const [papers, setPapers] = useState([]);
@@ -763,6 +89,16 @@ export default function K1ssaper() {
     return 'D:\\K1ssaper\\Storage';
   });
 
+  const [storageMode, setStorageMode] = useState(() => localStorage.getItem('kpapers_storage_mode') || 'local');
+  const [supabaseConfig, setSupabaseConfig] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('kpapers_supabase_config')) || { url: '', key: '' };
+    } catch { return { url: '', key: '' }; }
+  });
+  const [syncProgress, setSyncProgress] = useState('');
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [isSupabaseConnected, setIsSupabaseConnected] = useState(false);
+
   const [zoomLevel, setZoomLevel] = useState(50);
   const [lang, setLang] = useState(() => localStorage.getItem('kpapers_lang') || 'zh');
 
@@ -780,6 +116,7 @@ export default function K1ssaper() {
   const [uploadFile, setUploadFile] = useState(null);
   const [groupSuggestions, setGroupSuggestions] = useState([]);
   const [showGroupSuggestions, setShowGroupSuggestions] = useState(false);
+  const [currentTagInput, setCurrentTagInput] = useState('');
 
   // Notes State
   const [selectedNote, setSelectedNote] = useState(null);
@@ -804,7 +141,9 @@ export default function K1ssaper() {
       updatedAt: new Date().toISOString()
     };
 
-    if (isElectron()) {
+    if (storageMode === 'supabase') {
+      await SupabaseDB.saveNote(supabaseConfig, newFolder);
+    } else if (isElectron()) {
       await FileSystemDB.saveNote(localPath, newFolder);
     }
     setLocalRefreshTrigger(prev => prev + 1);
@@ -828,7 +167,9 @@ export default function K1ssaper() {
 
     const updatedNote = { ...note, parentId: targetFolderId, updatedAt: new Date().toISOString() };
 
-    if (isElectron()) {
+    if (storageMode === 'supabase') {
+      await SupabaseDB.saveNote(supabaseConfig, updatedNote);
+    } else if (isElectron()) {
       await FileSystemDB.saveNote(localPath, updatedNote);
     }
     setLocalRefreshTrigger(prev => prev + 1);
@@ -857,7 +198,7 @@ export default function K1ssaper() {
     if (!document.querySelector('meta[http-equiv="Content-Security-Policy"]')) {
       const meta = document.createElement('meta');
       meta.httpEquiv = 'Content-Security-Policy';
-      meta.content = "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: file: https://cdn.jsdelivr.net local-resource:;";
+      meta.content = "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: file: https: local-resource:;";
       document.head.appendChild(meta);
     }
   }, []);
@@ -875,22 +216,53 @@ export default function K1ssaper() {
   // --- Data Fetching Engine (Unified) ---
   useEffect(() => {
     setLoading(true);
-    if (isElectron()) {
-      Promise.all([
-        FileSystemDB.getAll(localPath),
-        FileSystemDB.getNotes(localPath)
-      ]).then(([papersData, notesData]) => {
-        setPapers(papersData);
-        setNotes(notesData);
-        setLoading(false);
-      });
-    } else {
-      // Web fallback
-      setPapers([]);
-      setNotes([]);
-      setLoading(false);
-    }
-  }, [localRefreshTrigger, localPath]);
+    let isMounted = true;
+
+    const fetchData = async () => {
+      try {
+        let papersData = [];
+        let notesData = [];
+
+        if (storageMode === 'supabase') {
+          if (supabaseConfig.url && supabaseConfig.key) {
+            try {
+              papersData = await SupabaseDB.getAll(supabaseConfig);
+              notesData = await SupabaseDB.getNotes(supabaseConfig);
+              if (isMounted) setIsSupabaseConnected(true);
+            } catch (err) {
+              console.error("Supabase load error", err);
+              if (isMounted) setIsSupabaseConnected(false);
+            }
+          } else {
+            if (isMounted) setIsSupabaseConnected(false);
+          }
+        } else if (isElectron()) {
+          [papersData, notesData] = await Promise.all([
+            FileSystemDB.getAll(localPath),
+            FileSystemDB.getNotes(localPath)
+          ]);
+        } else {
+          // Web fallback
+          [papersData, notesData] = await Promise.all([
+            IndexedDB.getAll(),
+            IndexedDB.getNotes()
+          ]);
+        }
+
+        if (isMounted) {
+          setPapers(papersData);
+          setNotes(notesData);
+          setLoading(false);
+        }
+      } catch (e) {
+        console.error("Fetch Error:", e);
+        if (isMounted) setLoading(false);
+      }
+    };
+
+    fetchData();
+    return () => { isMounted = false; };
+  }, [localRefreshTrigger, localPath, storageMode, supabaseConfig]);
 
   // --- Actions ---
   const handleOpenFileDialog = async () => {
@@ -929,8 +301,14 @@ export default function K1ssaper() {
         docData.createdAt = new Date().toISOString();
       }
 
-      if (isElectron()) {
-        await FileSystemDB.save(localPath, editingPaper ? { ...docData, id: editingPaper.id } : docData, uploadFile);
+      const paperPayload = editingPaper ? { ...docData, id: editingPaper.id } : docData;
+
+      if (storageMode === 'supabase') {
+        await SupabaseDB.save(supabaseConfig, paperPayload, uploadFile);
+      } else if (isElectron()) {
+        await FileSystemDB.save(localPath, paperPayload, uploadFile);
+      } else {
+        await IndexedDB.save(paperPayload);
       }
       setLocalRefreshTrigger(prev => prev + 1);
     } catch (error) { console.error("Error saving paper:", error); } finally {
@@ -955,7 +333,9 @@ export default function K1ssaper() {
         noteData.type = selectedNote.type || 'note';
       }
 
-      if (isElectron()) {
+      if (storageMode === 'supabase') {
+        await SupabaseDB.saveNote(supabaseConfig, noteData);
+      } else if (isElectron()) {
         await FileSystemDB.saveNote(localPath, noteData);
       } else {
         await IndexedDB.saveNote(noteData);
@@ -975,7 +355,9 @@ export default function K1ssaper() {
   const handleDelete = async (id) => {
     setDeleteConfirmation(null);
     try {
-      if (isElectron()) {
+      if (storageMode === 'supabase') {
+        await SupabaseDB.delete(supabaseConfig, id);
+      } else if (isElectron()) {
         await FileSystemDB.delete(localPath, id);
       } else {
         await IndexedDB.delete(id);
@@ -993,7 +375,9 @@ export default function K1ssaper() {
 
   const handleDeleteNote = async (id) => {
     try {
-      if (isElectron()) {
+      if (storageMode === 'supabase') {
+        await SupabaseDB.deleteNote(supabaseConfig, id);
+      } else if (isElectron()) {
         await FileSystemDB.deleteNote(localPath, id);
       } else {
         await IndexedDB.deleteNote(id);
@@ -1011,7 +395,9 @@ export default function K1ssaper() {
 
     const updatedPaper = { ...paper, notes: newNotes, updatedAt: new Date().toISOString() };
 
-    if (isElectron()) {
+    if (storageMode === 'supabase') {
+      await SupabaseDB.save(supabaseConfig, updatedPaper);
+    } else if (isElectron()) {
       await FileSystemDB.save(localPath, updatedPaper);
     } else {
       await IndexedDB.save(updatedPaper);
@@ -1025,7 +411,9 @@ export default function K1ssaper() {
 
     updatedPaper.updatedAt = new Date().toISOString();
 
-    if (isElectron()) {
+    if (storageMode === 'supabase') {
+      await SupabaseDB.save(supabaseConfig, updatedPaper);
+    } else if (isElectron()) {
       await FileSystemDB.save(localPath, updatedPaper);
     }
 
@@ -1078,6 +466,12 @@ export default function K1ssaper() {
   };
 
   const getPdfUrl = (paper) => {
+    if (storageMode === 'supabase' && supabaseConfig.url && supabaseConfig.key) {
+      const sb = SupabaseDB.init(supabaseConfig.url, supabaseConfig.key);
+      const { data } = sb.storage.from('pdfs').getPublicUrl(`${paper.id}.pdf`);
+      return data.publicUrl;
+    }
+
     const pdfPath = getComputedPdfPath(paper);
     if (isElectron() && pdfPath) {
       // Normalize backslashes for URL on Windows
@@ -1088,6 +482,12 @@ export default function K1ssaper() {
   };
 
   const downloadPdf = (paper) => {
+    if (storageMode === 'supabase') {
+      const url = getPdfUrl(paper);
+      if (url) window.open(url, '_blank');
+      return;
+    }
+
     const pdfPath = getComputedPdfPath(paper);
     if (isElectron() && pdfPath) {
       if (window.require) {
@@ -1128,38 +528,45 @@ export default function K1ssaper() {
     }
   };
 
-  const handleGroupChange = (e) => {
-    const val = e.target.value;
-    setFormData(prev => ({ ...prev, group: val }));
-    const parts = val.split(/[,，]/);
-    const lastPart = parts[parts.length - 1].trim();
-    if (lastPart) {
-      const allTags = groups.filter(g => g !== 'All' && g !== 'Uncategorized' && g !== 'Read' && g !== 'Unread');
-      const matches = allTags.filter(t => t.toLowerCase().startsWith(lastPart.toLowerCase()));
-      setGroupSuggestions(matches);
-      setShowGroupSuggestions(matches.length > 0);
-    } else {
-      setShowGroupSuggestions(false);
+  const addTag = (tag) => {
+    const cleanTag = tag.trim();
+    if (!cleanTag) return;
+    const currentTags = parseGroups(formData.group);
+    if (!currentTags.includes(cleanTag)) {
+      const newTags = [...currentTags, cleanTag];
+      setFormData(prev => ({ ...prev, group: newTags.join(', ') }));
     }
+    setCurrentTagInput('');
+    setShowGroupSuggestions(false);
   };
 
-  const selectGroupSuggestion = (suggestion) => {
-    const val = formData.group;
-    let lastCommaIndex = -1;
-    for (let i = val.length - 1; i >= 0; i--) {
-      if (val[i] === ',' || val[i] === '，') {
-        lastCommaIndex = i;
-        break;
-      }
+  const removeTag = (tagToRemove) => {
+    const currentTags = parseGroups(formData.group);
+    const newTags = currentTags.filter(t => t !== tagToRemove);
+    setFormData(prev => ({ ...prev, group: newTags.join(', ') }));
+  };
+
+  const handleGroupChange = (e) => {
+    const val = e.target.value;
+    // Special handling for comma to add tag
+    if (val.endsWith(',') || val.endsWith('，')) {
+      const newTag = val.slice(0, -1);
+      if (newTag.trim()) addTag(newTag);
+      return;
     }
-    let newVal;
-    if (lastCommaIndex === -1) {
-      newVal = suggestion + ', ';
+    setCurrentTagInput(val);
+
+    const currentTags = parseGroups(formData.group);
+    const allTags = groups.filter(g => g !== 'All' && g !== 'Uncategorized' && g !== 'Read' && g !== 'Unread');
+    const availableTags = allTags.filter(t => !currentTags.includes(t));
+
+    if (val.trim()) {
+      const matches = availableTags.filter(t => t.toLowerCase().includes(val.toLowerCase()));
+      setGroupSuggestions(matches);
+      setShowGroupSuggestions(true);
     } else {
-      newVal = val.substring(0, lastCommaIndex + 1) + ' ' + suggestion + ', ';
+      setGroupSuggestions(availableTags);
     }
-    setFormData(prev => ({ ...prev, group: newVal }));
-    setShowGroupSuggestions(false);
   };
 
   const openAddModal = () => {
@@ -1167,18 +574,20 @@ export default function K1ssaper() {
     setUploadStep('drop');
     setUploadFile(null);
     setFormData({ title: '', summary: '', authors: '', venue: '', year: new Date().getFullYear(), group: '', notes: '', url: '', isRead: false });
+    setCurrentTagInput('');
     setIsUploadModalOpen(true);
   };
   const openEditModal = (paper) => {
     setEditingPaper(paper);
     setUploadStep('form');
     setFormData({ ...paper, summary: paper.summary || '', url: paper.url || '' });
+    setCurrentTagInput('');
     setIsUploadModalOpen(true);
   };
-  const openNoteModal = (note = null) => {
+  const openNoteModal = (note = null, mode = 'edit') => {
     setSelectedNote(note);
     setNoteFormData(note ? { title: note.title, content: note.content } : { title: '', content: '' });
-    setIsNotePreviewFullscreen(false);
+    setIsNotePreviewFullscreen(mode === 'preview');
     setIsNoteModalOpen(true);
   };
   const openNotes = async (paper) => {
@@ -1386,13 +795,26 @@ export default function K1ssaper() {
         )}
 
         <div className="mt-auto pt-4 border-t border-zinc-200/50 px-2 flex items-center gap-3 opacity-80 non-draggable">
-          <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-zinc-800 to-zinc-600 flex items-center justify-center text-white shadow-md border-2 border-white">
-            <span className="font-bold text-xs">K</span>
+          <div className={`w-9 h-9 rounded-full flex items-center justify-center text-white shadow-md border-2 border-white ${storageMode === 'supabase'
+            ? (isSupabaseConnected ? 'bg-gradient-to-tr from-emerald-600 to-teal-500' : 'bg-gradient-to-tr from-amber-500 to-orange-500')
+            : 'bg-gradient-to-tr from-zinc-800 to-zinc-600'
+            }`}>
+            <span className="font-bold text-xs">{storageMode === 'supabase' ? 'S' : 'K'}</span>
           </div>
           <div className="flex flex-col">
-            <span className="text-sm font-bold text-zinc-800">K1ssInn</span>
-            <span className="text-[10px] text-zinc-400 font-medium uppercase tracking-wide flex items-center gap-1">
-              <HardDrive size={10} /> {t('localStorage')}
+            <span className="text-sm font-bold text-zinc-800">
+              {storageMode === 'supabase'
+                ? (loading ? 'Connecting...' : (isSupabaseConnected ? 'Supabase User' : 'Disconnected'))
+                : 'Local User'}
+            </span>
+            <span className={`text-[10px] font-medium uppercase tracking-wide flex items-center gap-1 ${storageMode === 'supabase' && !isSupabaseConnected ? 'text-amber-600' : 'text-zinc-400'
+              }`}>
+              {storageMode === 'supabase'
+                ? (isSupabaseConnected ? <Globe size={10} /> : <AlertCircle size={10} />)
+                : <HardDrive size={10} />}
+              {storageMode === 'supabase'
+                ? (loading ? 'Checking...' : (isSupabaseConnected ? t('onlineDB') : 'Check Connection'))
+                : t('localStorage')}
             </span>
           </div>
         </div>
@@ -1450,49 +872,137 @@ export default function K1ssaper() {
                     </div>
                   </div>
 
-                  {/* Storage Path Setting */}
+                  {/* Storage Mode Setting */}
                   <div className="mb-10 animate-in slide-in-from-top-4 fade-in duration-300">
                     <h3 className="text-lg font-semibold text-zinc-800 mb-4 flex items-center gap-2">
-                      <FolderOpen size={20} className="text-zinc-400" />
-                      {t('storageLocation')}
+                      <HardDrive size={20} className="text-zinc-400" />
+                      {t('storageMode')}
                     </h3>
-                    <div className="bg-white rounded-2xl border border-zinc-200 p-4 flex items-center gap-4 shadow-sm">
-                      <div className="w-10 h-10 bg-zinc-100 rounded-full flex items-center justify-center text-zinc-500 flex-shrink-0">
-                        <HardDrive size={18} />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-0.5">{t('currentPath')}</div>
-                        {/* Editable Input for Path */}
-                        <input
-                          type="text"
-                          value={localPath}
-                          onChange={(e) => {
-                            setLocalPath(e.target.value);
-                            localStorage.setItem('kpapers_local_path', e.target.value);
-                          }}
-                          className="text-sm font-mono text-zinc-700 w-full bg-transparent border-none focus:ring-0 p-0 truncate"
-                          placeholder="e.g. D:\Papers"
-                        />
-                      </div>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={openStorageFolder}
-                          className="px-4 py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 text-sm font-medium rounded-full transition-colors whitespace-nowrap flex items-center gap-1"
-                        >
-                          <FolderOpen size={14} />
-                          {t('openFolder')}
-                        </button>
-                        <button
-                          onClick={handleChangeFolderDialog}
-                          className="px-4 py-2 bg-zinc-900 hover:bg-black text-white text-sm font-medium rounded-full transition-colors whitespace-nowrap cursor-pointer flex items-center gap-1"
-                        >
-                          <Edit2 size={14} />
-                          {t('changeFolder')}
-                        </button>
-                      </div>
+                    <div className="bg-white rounded-2xl border border-zinc-200 p-1 flex gap-1 shadow-sm mb-4">
+                      <button
+                        onClick={() => { setStorageMode('local'); localStorage.setItem('kpapers_storage_mode', 'local'); }}
+                        className={`flex-1 py-3 px-4 rounded-xl text-sm font-medium transition-all ${storageMode === 'local' ? 'bg-zinc-100 text-zinc-900 shadow-inner' : 'text-zinc-500 hover:bg-zinc-50'}`}
+                      >
+                        {t('localStorage')}
+                      </button>
+                      <button
+                        onClick={() => { setStorageMode('supabase'); localStorage.setItem('kpapers_storage_mode', 'supabase'); }}
+                        className={`flex-1 py-3 px-4 rounded-xl text-sm font-medium transition-all ${storageMode === 'supabase' ? 'bg-zinc-100 text-zinc-900 shadow-inner' : 'text-zinc-500 hover:bg-zinc-50'}`}
+                      >
+                        Supabase Cloud
+                      </button>
                     </div>
-                    <p className="mt-2 text-xs text-zinc-400 px-2">{t('localDesc')}</p>
+
+                    {storageMode === 'supabase' && (
+                      <div className="bg-zinc-50 rounded-2xl border border-zinc-200 p-6 animate-in slide-in-from-top-2">
+                        <div className="space-y-4">
+                          <div>
+                            <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider mb-2">Supabase URL</label>
+                            <input
+                              type="text"
+                              className="w-full px-4 py-2 bg-white border border-zinc-200 rounded-xl text-sm"
+                              placeholder="https://your-project.supabase.co"
+                              value={supabaseConfig.url}
+                              onChange={(e) => {
+                                const newConfig = { ...supabaseConfig, url: e.target.value };
+                                setSupabaseConfig(newConfig);
+                                localStorage.setItem('kpapers_supabase_config', JSON.stringify(newConfig));
+                              }}
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider mb-2">Supabase Key (Anon Public)</label>
+                            <input
+                              type="password"
+                              className="w-full px-4 py-2 bg-white border border-zinc-200 rounded-xl text-sm"
+                              placeholder="your-anon-key"
+                              value={supabaseConfig.key}
+                              onChange={(e) => {
+                                const newConfig = { ...supabaseConfig, key: e.target.value };
+                                setSupabaseConfig(newConfig);
+                                localStorage.setItem('kpapers_supabase_config', JSON.stringify(newConfig));
+                              }}
+                            />
+                          </div>
+
+                          <div className="pt-4 border-t border-zinc-200 mt-4">
+                            <button
+                              onClick={async () => {
+                                if (isSyncing) return;
+                                setIsSyncing(true);
+                                setSyncProgress('Starting sync...');
+                                try {
+                                  const result = await SupabaseDB.syncFromLocal(supabaseConfig, localPath, (msg) => setSyncProgress(msg));
+                                  setSyncProgress(`Sync Complete! Skipped ${result.skipped} items.`);
+                                  setLocalRefreshTrigger(prev => prev + 1);
+                                  setTimeout(() => setSyncProgress(''), 5000);
+                                } catch (e) {
+                                  setSyncProgress(`Error: ${e.message}`);
+                                } finally {
+                                  setIsSyncing(false);
+                                }
+                              }}
+                              disabled={isSyncing}
+                              className={`w-full py-2.5 bg-black text-white rounded-xl text-sm font-bold shadow-lg shadow-zinc-200 transition-all flex items-center justify-center gap-2 ${isSyncing ? 'opacity-70 cursor-not-allowed' : 'hover:scale-[1.01] active:scale-[0.99]'}`}
+                            >
+                              {isSyncing ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
+                              {isSyncing ? 'Syncing...' : 'Sync Local Data to Cloud'}
+                            </button>
+                            {syncProgress && <p className="text-center text-xs text-zinc-500 mt-2 font-mono">{syncProgress}</p>}
+                          </div>
+                          <p className="text-xs text-zinc-400 mt-4">
+                            Requires standard tables: 'papers', 'notes' and storage bucket 'pdfs'.
+                          </p>
+                        </div>
+                      </div>
+                    )}
                   </div>
+
+                  {/* Storage Path Setting */}
+                  {storageMode === 'local' && (
+                    <div className="mb-10 animate-in slide-in-from-top-4 fade-in duration-300">
+                      <h3 className="text-lg font-semibold text-zinc-800 mb-4 flex items-center gap-2">
+                        <FolderOpen size={20} className="text-zinc-400" />
+                        {t('storageLocation')}
+                      </h3>
+                      <div className="bg-white rounded-2xl border border-zinc-200 p-4 flex items-center gap-4 shadow-sm">
+                        <div className="w-10 h-10 bg-zinc-100 rounded-full flex items-center justify-center text-zinc-500 flex-shrink-0">
+                          <HardDrive size={18} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-0.5">{t('currentPath')}</div>
+                          {/* Editable Input for Path */}
+                          <input
+                            type="text"
+                            value={localPath}
+                            onChange={(e) => {
+                              setLocalPath(e.target.value);
+                              localStorage.setItem('kpapers_local_path', e.target.value);
+                            }}
+                            className="text-sm font-mono text-zinc-700 w-full bg-transparent border-none focus:ring-0 p-0 truncate"
+                            placeholder="e.g. D:\Papers"
+                          />
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={openStorageFolder}
+                            className="px-4 py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 text-sm font-medium rounded-full transition-colors whitespace-nowrap flex items-center gap-1"
+                          >
+                            <FolderOpen size={14} />
+                            {t('openFolder')}
+                          </button>
+                          <button
+                            onClick={handleChangeFolderDialog}
+                            className="px-4 py-2 bg-zinc-900 hover:bg-black text-white text-sm font-medium rounded-full transition-colors whitespace-nowrap cursor-pointer flex items-center gap-1"
+                          >
+                            <Edit2 size={14} />
+                            {t('changeFolder')}
+                          </button>
+                        </div>
+                      </div>
+                      <p className="mt-2 text-xs text-zinc-400 px-2">{t('localDesc')}</p>
+                    </div>
+                  )}
 
                   <div className="mb-10">
                     <h3 className="text-lg font-semibold text-zinc-800 mb-4 flex items-center gap-2">
@@ -1500,12 +1010,32 @@ export default function K1ssaper() {
                       {t('account')}
                     </h3>
                     <div className="bg-zinc-50 rounded-2xl border border-zinc-200 p-6 flex items-center gap-4">
-                      <div className="w-16 h-16 rounded-full bg-gradient-to-br from-zinc-800 to-black text-white flex items-center justify-center text-2xl font-bold shadow-lg">K</div>
-                      <div>
-                        <div className="font-bold text-zinc-900 text-lg">K1ssInn</div>
-                        <div className="text-sm text-zinc-500">{t('proUser')}</div>
+                      <div className={`w-16 h-16 rounded-full text-white flex items-center justify-center text-2xl font-bold shadow-lg ${storageMode === 'supabase'
+                        ? (isSupabaseConnected ? 'bg-gradient-to-br from-emerald-500 to-teal-600' : 'bg-gradient-to-br from-amber-500 to-orange-500')
+                        : 'bg-gradient-to-br from-zinc-800 to-black'
+                        }`}>
+                        {storageMode === 'supabase' ? 'S' : 'K'}
                       </div>
-                      <div className="ml-auto px-3 py-1 bg-zinc-200 rounded-full text-xs font-bold text-zinc-600 uppercase tracking-wide">{t('offline')}</div>
+                      <div>
+                        <div className="font-bold text-zinc-900 text-lg">
+                          {storageMode === 'supabase' ? 'Supabase User' : 'Local User'}
+                        </div>
+                        <div className="text-sm text-zinc-500">
+                          {storageMode === 'supabase'
+                            ? (loading ? 'Verifying Connection...' : (isSupabaseConnected
+                              ? (supabaseConfig.url ? supabaseConfig.url.replace(/^https?:\/\//, '').split('/')[0] : 'Connected')
+                              : 'Connection Failed - Check Settings'))
+                            : t('proUser')}
+                        </div>
+                      </div>
+                      <div className={`ml-auto px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide ${storageMode === 'supabase'
+                        ? (isSupabaseConnected ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700')
+                        : 'bg-zinc-200 text-zinc-600'
+                        }`}>
+                        {storageMode === 'supabase'
+                          ? (loading ? 'Checking...' : (isSupabaseConnected ? t('online') : 'Offline'))
+                          : t('offline')}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1572,6 +1102,15 @@ export default function K1ssaper() {
                 </div>
 
                 <div className="flex items-center gap-4">
+                  {storageMode === 'supabase' && (
+                    <button
+                      onClick={() => setLocalRefreshTrigger(prev => prev + 1)}
+                      className="p-2 rounded-full text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100 transition-all non-draggable"
+                      title="Refresh Notes"
+                    >
+                      <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+                    </button>
+                  )}
                   <button
                     onClick={() => setIsFolderModalOpen(true)}
                     className="bg-white border border-zinc-200 text-zinc-700 hover:bg-zinc-50 py-2 px-4 rounded-full flex items-center gap-2 text-sm font-medium shadow-sm non-draggable"
@@ -1690,6 +1229,16 @@ export default function K1ssaper() {
                 <div className="flex items-center gap-4 non-draggable">
                   {/* Zoom/Density Slider */}
                   <div className="flex items-center gap-2 group mr-2">
+                    {/* Cloud Refresh Button */}
+                    {storageMode === 'supabase' && (
+                      <button
+                        onClick={() => setLocalRefreshTrigger(prev => prev + 1)}
+                        className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100 transition-all mr-2"
+                        title="Refresh from Cloud"
+                      >
+                        <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+                      </button>
+                    )}
                     <ZoomOut size={14} className="text-zinc-400" />
                     <input
                       type="range"
@@ -1921,7 +1470,7 @@ export default function K1ssaper() {
                   <button onClick={() => setNoteMode('edit')} className={`px-4 py-1.5 rounded-md text-xs font-semibold transition-all shadow-sm ${noteMode === 'edit' ? 'bg-white text-zinc-900 shadow' : 'text-zinc-500 hover:text-zinc-700 shadow-none'}`}>{t('write')}</button>
                   <button onClick={() => setNoteMode('preview')} className={`px-4 py-1.5 rounded-md text-xs font-semibold transition-all shadow-sm ${noteMode === 'preview' ? 'bg-white text-blue-600 shadow' : 'text-zinc-500 hover:text-zinc-700 shadow-none'}`}>{t('read')}</button>
                   {/* PDF View Toggle */}
-                  {((isElectron() && !isMac && selectedPaper.hasPdf) || (!isElectron() && selectedPaper.pdfFile)) ? (
+                  {((isElectron() && !isMac && selectedPaper.hasPdf) || (!isElectron() && selectedPaper.pdfFile) || (storageMode === 'supabase' && selectedPaper.hasPdf)) ? (
                     <button onClick={() => setNoteMode('pdf')} className={`px-4 py-1.5 rounded-md text-xs font-semibold transition-all shadow-sm ${noteMode === 'pdf' ? 'bg-white text-red-600 shadow' : 'text-zinc-500 hover:text-zinc-700 shadow-none'}`}>{t('pdf')}</button>
                   ) : null}
                 </div>
@@ -1943,7 +1492,7 @@ export default function K1ssaper() {
                 {/* PDF Download Button (Only for Local Mode papers with PDF) */}
                 {(selectedPaper.hasPdf || selectedPaper.pdfFile) && (
                   <button onClick={() => downloadPdf(selectedPaper)} className="p-2 rounded-full hover:bg-zinc-100 text-zinc-400 hover:text-red-600 transition-colors" title={t('locatePdf')}>
-                    {isElectron() ? <Folder size={18} /> : <Download size={18} />}
+                    {storageMode === 'supabase' ? <Download size={18} /> : (isElectron() ? <Folder size={18} /> : <Download size={18} />)}
                   </button>
                 )}
                 <button onClick={() => setIsFullScreenNote(!isFullScreenNote)} className="p-2 rounded-full hover:bg-zinc-100 text-zinc-400 hover:text-zinc-900 transition-colors" title={isFullScreenNote ? t('exitFullscreen') : t('fullscreen')}>
@@ -2075,218 +1624,50 @@ export default function K1ssaper() {
       )}
 
       {/* --- New Paper Modal (Two-Step Flow) --- */}
-      {isUploadModalOpen && (
-        <div className="fixed inset-0 bg-zinc-900/20 backdrop-blur-sm z-[300] flex items-center justify-center p-4">
-          <div className="bg-white/95 backdrop-blur-2xl rounded-[32px] shadow-2xl w-full max-w-[520px] overflow-hidden animate-in fade-in zoom-in-95 duration-300 border border-white/40 ring-1 ring-black/5">
-
-            {/* Modal Header */}
-            <div className="px-8 py-6 border-b border-zinc-100/80 flex justify-between items-center">
-              <h3 className="font-bold text-xl text-zinc-900">{editingPaper ? t('editDetails') : (uploadStep === 'drop' ? t('addPaper') : t('paperDetails'))}</h3>
-              <button onClick={closeModals} className="w-8 h-8 rounded-full bg-zinc-100 hover:bg-zinc-200 flex items-center justify-center text-zinc-500 transition-colors"><X size={18} /></button>
-            </div>
-
-            <div className="p-8">
-              {/* STEP 1: Drop Zone */}
-              {!editingPaper && uploadStep === 'drop' && (
-                <div className="animate-in slide-in-from-bottom-4 duration-300 fade-in">
-                  <div
-                    className="border-2 border-dashed border-zinc-200 bg-zinc-50/50 rounded-3xl p-10 text-center hover:bg-blue-50/30 hover:border-blue-300 transition-all cursor-pointer relative group h-[320px] flex flex-col items-center justify-center"
-                    onClick={handleOpenFileDialog} // Using native dialog instead of input
-                  >
-                    {/* Input removed, using div click handler */}
-                    <div className="w-16 h-16 bg-white rounded-2xl shadow-lg shadow-zinc-200/50 flex items-center justify-center text-blue-500 group-hover:scale-110 group-hover:rotate-3 transition-transform duration-300 mb-6">
-                      <Upload size={32} strokeWidth={1.5} />
-                    </div>
-                    <h4 className="text-lg font-bold text-zinc-800 mb-2">{t('dropPdf')}</h4>
-                    <p className="text-sm text-zinc-400 px-8">{t('autoExtract')}</p>
-                  </div>
-
-                  <div className="mt-6 flex items-center gap-4">
-                    <div className="h-px bg-zinc-100 flex-1"></div>
-                    <span className="text-xs text-zinc-400 font-medium uppercase tracking-wide">Or</span>
-                    <div className="h-px bg-zinc-100 flex-1"></div>
-                  </div>
-
-                  <button onClick={switchToManualEntry} className="w-full mt-6 py-3 rounded-2xl border border-zinc-200 text-sm font-semibold text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900 transition-colors">
-                    {t('enterManually')}
-                  </button>
-                </div>
-              )}
-
-              {/* STEP 2: Form */}
-              {(editingPaper || uploadStep === 'form') && (
-                <div className="space-y-5 animate-in slide-in-from-right-8 duration-300 fade-in">
-                  <div>
-                    <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider mb-2 ml-1">{t('title')}</label>
-                    <textarea
-                      className="w-full px-4 py-3 bg-zinc-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 focus:bg-white transition-all resize-none placeholder:font-normal"
-                      placeholder={t('enterTitle')}
-                      rows={2}
-                      value={formData.title}
-                      onChange={e => setFormData({ ...formData, title: e.target.value })}
-                      autoFocus
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider mb-2 ml-1">{t('summary')}</label>
-                    <textarea
-                      className="w-full px-4 py-3 bg-zinc-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 focus:bg-white transition-all resize-none placeholder:font-normal"
-                      placeholder={t('summaryPlaceholder')}
-                      rows={2}
-                      value={formData.summary}
-                      onChange={e => setFormData({ ...formData, summary: e.target.value })}
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider mb-2 ml-1">{t('venue')}</label>
-                      <input type="text" className="w-full px-4 py-3 bg-zinc-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 focus:bg-white transition-all placeholder:font-normal" placeholder="e.g. CVPR" value={formData.venue} onChange={e => setFormData({ ...formData, venue: e.target.value })} />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider mb-2 ml-1">{t('year')}</label>
-                      <input type="number" className="w-full px-4 py-3 bg-zinc-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 focus:bg-white transition-all placeholder:font-normal" value={formData.year} onChange={e => setFormData({ ...formData, year: e.target.value })} />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider mb-2 ml-1">{t('authors')}</label>
-                    <input type="text" className="w-full px-4 py-3 bg-zinc-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 focus:bg-white transition-all placeholder:font-normal" placeholder={t('commaSeparated')} value={formData.authors} onChange={e => setFormData({ ...formData, authors: e.target.value })} />
-                  </div>
-
-                  <div className="relative">
-                    <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider mb-2 ml-1">{t('group')}</label>
-                    <div className="relative">
-                      <input
-                        type="text"
-                        className="w-full px-4 py-3 pl-10 bg-zinc-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 focus:bg-white transition-all placeholder:font-normal"
-                        placeholder={t('selectOrCreate')}
-                        value={formData.group}
-                        onChange={handleGroupChange}
-                        onBlur={() => setTimeout(() => setShowGroupSuggestions(false), 200)}
-                        onFocus={() => {
-                          const parts = formData.group.split(/[,，]/);
-                          const currentInput = parts[parts.length - 1].trim();
-                          if (currentInput) {
-                            const allTags = groups.filter(g => g !== 'All' && g !== 'Uncategorized');
-                            const matches = allTags.filter(t => t.toLowerCase().startsWith(currentInput.toLowerCase()));
-                            setGroupSuggestions(matches);
-                            setShowGroupSuggestions(matches.length > 0);
-                          }
-                        }}
-                      />
-                      <Tag size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400" />
-
-                      {/* Custom Suggestions Dropdown */}
-                      {showGroupSuggestions && groupSuggestions.length > 0 && (
-                        <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-white rounded-xl shadow-xl border border-zinc-100 max-h-40 overflow-y-auto">
-                          {groupSuggestions.map(suggestion => (
-                            <div
-                              key={suggestion}
-                              className="px-4 py-2 text-sm text-zinc-700 hover:bg-blue-50 hover:text-blue-600 cursor-pointer flex items-center gap-2"
-                              onClick={() => selectGroupSuggestion(suggestion)}
-                            >
-                              <span className={`w-2 h-2 rounded-full ${getGroupStyles(suggestion).dot}`}></span>
-                              {suggestion}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider mb-2 ml-1">{t('link')}</label>
-                    <input type="text" className="w-full px-4 py-3 bg-zinc-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 focus:bg-white transition-all placeholder:font-normal" placeholder="https://..." value={formData.url} onChange={e => setFormData({ ...formData, url: e.target.value })} />
-                  </div>
-
-                  {uploadFile && (
-                    <div className="flex items-center gap-2 px-4 py-3 bg-blue-50 text-blue-700 rounded-xl text-xs font-medium border border-blue-100">
-                      <FileIcon size={14} />
-                      <span>PDF file attached and will be saved locally.</span>
-                    </div>
-                  )}
-
-                  <div className="pt-6 flex justify-end gap-3">
-                    <button onClick={closeModals} className="px-6 py-3 text-sm font-bold text-zinc-500 hover:text-zinc-800 hover:bg-zinc-100 rounded-full transition-colors">{t('cancel')}</button>
-                    <button onClick={handleSavePaper} disabled={!formData.title} className="px-8 py-3 text-sm font-bold bg-black text-white rounded-full hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-zinc-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 transition-all">{t('savePaper')}</button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      <UploadModal
+        isOpen={isUploadModalOpen}
+        onClose={closeModals}
+        editingPaper={editingPaper}
+        uploadStep={uploadStep}
+        handleOpenFileDialog={handleOpenFileDialog}
+        switchToManualEntry={switchToManualEntry}
+        formData={formData}
+        setFormData={setFormData}
+        currentTagInput={currentTagInput}
+        handleGroupChange={handleGroupChange}
+        addTag={addTag}
+        removeTag={removeTag}
+        showGroupSuggestions={showGroupSuggestions}
+        setShowGroupSuggestions={setShowGroupSuggestions}
+        groupSuggestions={groupSuggestions}
+        setGroupSuggestions={setGroupSuggestions}
+        groups={groups}
+        uploadFile={uploadFile}
+        handleSavePaper={handleSavePaper}
+        t={t}
+      />
 
       {/* --- Note Modal --- */}
-      {isNoteModalOpen && (
-        <div className={isNotePreviewFullscreen ? "fixed inset-0 bg-white z-[300] flex flex-col" : "fixed inset-0 bg-zinc-900/20 backdrop-blur-sm z-[300] flex items-center justify-center p-4"}>
-          <div className={isNotePreviewFullscreen ? "flex-1 flex flex-col overflow-hidden" : "bg-white/95 backdrop-blur-2xl rounded-[32px] shadow-2xl w-full max-w-4xl h-[80vh] overflow-hidden animate-in fade-in zoom-in-95 duration-300 border border-white/40 ring-1 ring-black/5 flex flex-col"}>
-            <div className={`px-8 py-6 border-b border-zinc-100/80 flex justify-between items-center flex-shrink-0 ${isNotePreviewFullscreen ? 'bg-white' : ''}`}>
-              <h3 className="font-bold text-xl text-zinc-900">{selectedNote ? t('editNote') : t('newNote')}</h3>
-              <div className="flex gap-3 items-center non-draggable">
-                <button
-                  onClick={() => setIsNotePreviewFullscreen(!isNotePreviewFullscreen)}
-                  className="p-2 text-zinc-400 hover:text-zinc-900 hover:bg-zinc-100 rounded-full transition-colors mr-2"
-                  title={isNotePreviewFullscreen ? t('exitFullscreen') : t('fullscreen')}
-                >
-                  {isNotePreviewFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
-                </button>
-                <button onClick={() => setIsNoteModalOpen(false)} className="px-4 py-2 text-sm font-bold text-zinc-500 hover:text-zinc-800 hover:bg-zinc-100 rounded-full transition-colors">{t('cancel')}</button>
-                <button onClick={handleSaveNote} disabled={!noteFormData.title} className="px-6 py-2 text-sm font-bold bg-black text-white rounded-full hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-zinc-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 transition-all">{t('savePaper')}</button>
-              </div>
-            </div>
-            <div className={`flex-1 flex flex-col overflow-hidden ${isNotePreviewFullscreen ? 'p-0' : 'p-8'}`}>
-              {!isNotePreviewFullscreen && (
-                <input
-                  type="text"
-                  className="w-full px-4 py-3 bg-zinc-50 border-none rounded-xl text-lg font-bold focus:ring-2 focus:ring-blue-500/20 focus:bg-white transition-all placeholder:font-normal mb-4"
-                  placeholder={t('noteTitle')}
-                  value={noteFormData.title}
-                  onChange={e => setNoteFormData({ ...noteFormData, title: e.target.value })}
-                  autoFocus
-                />
-              )}
-              <div className="flex-1 flex gap-4 min-h-0">
-                {!isNotePreviewFullscreen && (
-                  <textarea
-                    className="flex-1 h-full p-4 bg-zinc-50 border-none rounded-xl text-sm font-mono focus:ring-2 focus:ring-blue-500/20 focus:bg-white transition-all resize-none placeholder:font-normal leading-relaxed"
-                    placeholder={t('noteContent')}
-                    value={noteFormData.content}
-                    onChange={e => setNoteFormData({ ...noteFormData, content: e.target.value })}
-                  />
-                )}
-                <div className={`flex-1 h-full overflow-y-auto ${isNotePreviewFullscreen ? 'bg-white max-w-4xl mx-auto w-full px-8 py-12' : 'p-4 bg-white border border-zinc-100 rounded-xl'}`}>
-                  <AdvancedMarkdown content={noteFormData.content} />
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <NoteModal
+        isOpen={isNoteModalOpen}
+        onClose={() => setIsNoteModalOpen(false)}
+        selectedNote={selectedNote}
+        isNotePreviewFullscreen={isNotePreviewFullscreen}
+        setIsNotePreviewFullscreen={setIsNotePreviewFullscreen}
+        noteFormData={noteFormData}
+        setNoteFormData={setNoteFormData}
+        handleSaveNote={handleSaveNote}
+        t={t}
+      />
 
       {/* --- New Folder Modal --- */}
-      {isFolderModalOpen && (
-        <div className="fixed inset-0 bg-zinc-900/20 backdrop-blur-sm z-[300] flex items-center justify-center p-4">
-          <div className="bg-white/95 backdrop-blur-2xl rounded-[32px] shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-300 border border-white/40 ring-1 ring-black/5 p-6">
-            <h3 className="font-bold text-xl text-zinc-900 mb-4">New Folder</h3>
-            <input
-              type="text"
-              className="w-full px-4 py-3 bg-zinc-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 focus:bg-white transition-all placeholder:font-normal mb-6"
-              placeholder="Folder Name"
-              value={folderName}
-              onChange={e => setFolderName(e.target.value)}
-              autoFocus
-              onKeyDown={(e) => { if (e.key === 'Enter') handleCreateFolder(); }}
-            />
-            <div className="flex justify-end gap-3">
-              <button onClick={() => setIsFolderModalOpen(false)} className="px-6 py-2.5 rounded-full border border-zinc-200 text-sm font-semibold text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900 transition-colors">Cancel</button>
-              <button onClick={handleCreateFolder} disabled={!folderName.trim()} className="px-6 py-2.5 rounded-full bg-black text-white text-sm font-semibold hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-zinc-300 disabled:opacity-50 disabled:cursor-not-allowed transition-all">Create</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <FolderModal
+        isOpen={isFolderModalOpen}
+        onClose={() => setIsFolderModalOpen(false)}
+        folderName={folderName}
+        setFolderName={setFolderName}
+        handleCreateFolder={handleCreateFolder}
+      />
 
     </div>
   );
