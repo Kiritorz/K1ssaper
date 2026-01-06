@@ -450,7 +450,7 @@ export default function K1ssaper() {
       const { shell } = window.require('electron');
       shell.openPath(localPath);
     } else {
-      alert("Folder opening is only available in desktop app.");
+      alert(t('folderOpenAlert'));
     }
   };
 
@@ -782,7 +782,7 @@ export default function K1ssaper() {
                   >
                     <div className="flex items-center gap-3 overflow-hidden">
                       <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${groupStyles.dot}`}></div>
-                      <span className="truncate">{group}</span>
+                      <span className="truncate">{group === 'Uncategorized' ? t('uncategorized') : group}</span>
                     </div>
                     <span className={`text-[11px] px-2 py-0.5 rounded-full transition-colors ${isActive ? 'bg-zinc-100 text-zinc-600' : 'text-zinc-400 bg-transparent'}`}>
                       {count}
@@ -1063,7 +1063,7 @@ export default function K1ssaper() {
                       className={`flex items-center gap-1 px-2 py-1 rounded-lg text-sm font-medium transition-all border-2 ${dragOverId === 'root' ? 'border-blue-500 bg-blue-50 text-blue-700' : (!currentFolderId ? 'border-transparent bg-zinc-100 text-zinc-900' : 'border-transparent text-zinc-500 hover:bg-zinc-50 hover:text-zinc-900')}`}
                     >
                       <HardDrive size={14} />
-                      <span>Root</span>
+                      <span>{t('root')}</span>
                     </button>
                     {(() => {
                       const path = [];
@@ -1115,7 +1115,7 @@ export default function K1ssaper() {
                     onClick={() => setIsFolderModalOpen(true)}
                     className="bg-white border border-zinc-200 text-zinc-700 hover:bg-zinc-50 py-2 px-4 rounded-full flex items-center gap-2 text-sm font-medium shadow-sm non-draggable"
                   >
-                    <FolderOpen size={16} /> New Folder
+                    <FolderOpen size={16} /> {t('newFolder')}
                   </button>
                   <button
                     onClick={() => openNoteModal()}
@@ -1186,7 +1186,7 @@ export default function K1ssaper() {
                           </div>
                         </div>
                         <h3 className="font-bold text-lg text-zinc-900 mb-1 line-clamp-1">{folder.title}</h3>
-                        <p className="text-sm text-zinc-500">{notes.filter(n => n.parentId === folder.id).length} items</p>
+                        <p className="text-sm text-zinc-500">{notes.filter(n => n.parentId === folder.id).length} {t('folderItems')}</p>
                       </div>
                     ))}
 
@@ -1247,7 +1247,7 @@ export default function K1ssaper() {
                       value={zoomLevel}
                       onChange={(e) => setZoomLevel(parseInt(e.target.value))}
                       className="w-24 h-1 bg-zinc-200 rounded-lg appearance-none cursor-pointer accent-zinc-800 hover:accent-zinc-600 transition-all"
-                      title="Adjust Display Density"
+                      title={t('adjustDensity')}
                     />
                     <ZoomIn size={14} className="text-zinc-400" />
                   </div>
@@ -1509,7 +1509,7 @@ export default function K1ssaper() {
                   <iframe
                     src={getPdfUrl(selectedPaper)}
                     className="w-full h-full border-none"
-                    title="PDF Preview"
+                    title={t('pdfPreview')}
                   />
                 </div>
               ) : (
@@ -1546,7 +1546,7 @@ export default function K1ssaper() {
                       <textarea
                         className="w-full flex-1 bg-transparent border-none focus:ring-0 text-sm leading-7 text-zinc-700 placeholder:text-zinc-300 font-mono resize-none selection:bg-blue-100 selection:text-blue-700 caret-blue-600 outline-none pb-32"
                         style={{ minHeight: '60vh' }}
-                        placeholder="Start writing your thoughts..."
+                        placeholder={t('startWriting')}
                         value={selectedPaper.notes || ''}
                         onChange={(e) => setSelectedPaper({ ...selectedPaper, notes: e.target.value })}
                         onBlur={(e) => updateNotes(selectedPaper.id, e.target.value)}
@@ -1554,7 +1554,7 @@ export default function K1ssaper() {
                       ></textarea>
                     ) : (
                       <div className="prose prose-lg prose-zinc max-w-none pb-32">
-                        <AdvancedMarkdown content={selectedPaper.notes} />
+                        <AdvancedMarkdown content={selectedPaper.notes} noContentText={t('noContent')} loadingText={t('loadingEngine')} />
                       </div>
                     )}
                   </div>
