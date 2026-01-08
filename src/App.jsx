@@ -131,12 +131,13 @@ export default function K1ssaper() {
       updatedAt: new Date().toISOString()
     };
 
+    let savedFolder = newFolder;
     if (storageMode === 'supabase') {
-      await SupabaseDB.saveNote(supabaseConfig, newFolder);
+      savedFolder = await SupabaseDB.saveNote(supabaseConfig, newFolder);
     } else if (isElectron()) {
-      await FileSystemDB.saveNote(localPath, newFolder);
+      savedFolder = await FileSystemDB.saveNote(localPath, newFolder);
     }
-    setLocalRefreshTrigger(prev => prev + 1);
+    setNotes(prev => [...prev, savedFolder]);
     setFolderName('');
     setIsFolderModalOpen(false);
   };
@@ -157,12 +158,14 @@ export default function K1ssaper() {
 
     const updatedNote = { ...note, parentId: targetFolderId, updatedAt: new Date().toISOString() };
 
+    // Optimistic Update
+    setNotes(prev => prev.map(n => n.id === noteId ? updatedNote : n));
+
     if (storageMode === 'supabase') {
       await SupabaseDB.saveNote(supabaseConfig, updatedNote);
     } else if (isElectron()) {
       await FileSystemDB.saveNote(localPath, updatedNote);
     }
-    setLocalRefreshTrigger(prev => prev + 1);
   };
 
   // Filter & Sort State
@@ -292,15 +295,24 @@ export default function K1ssaper() {
       }
 
       const paperPayload = editingPaper ? { ...docData, id: editingPaper.id } : docData;
+      let savedPaper = paperPayload;
 
       if (storageMode === 'supabase') {
-        await SupabaseDB.save(supabaseConfig, paperPayload, uploadFile);
+        savedPaper = await SupabaseDB.save(supabaseConfig, paperPayload, uploadFile);
       } else if (isElectron()) {
-        await FileSystemDB.save(localPath, paperPayload, uploadFile);
+        savedPaper = await FileSystemDB.save(localPath, paperPayload, uploadFile);
       } else {
-        await IndexedDB.save(paperPayload);
+        savedPaper = await IndexedDB.save(paperPayload);
       }
-      setLocalRefreshTrigger(prev => prev + 1);
+
+      setPapers(prev => {
+        const exists = prev.find(p => p.id === savedPaper.id);
+        if (exists) {
+          return prev.map(p => p.id === savedPaper.id ? savedPaper : p);
+        }
+        return [savedPaper, ...prev];
+      });
+      // setLocalRefreshTrigger(prev => prev + 1); // Avoid full refresh
     } catch (error) { console.error("Error saving paper:", error); } finally {
       setLoading(false);
       setUploadFile(null);
@@ -323,14 +335,21 @@ export default function K1ssaper() {
         noteData.type = selectedNote.type || 'note';
       }
 
+      let savedNote = noteData;
       if (storageMode === 'supabase') {
-        await SupabaseDB.saveNote(supabaseConfig, noteData);
+        savedNote = await SupabaseDB.saveNote(supabaseConfig, noteData);
       } else if (isElectron()) {
-        await FileSystemDB.saveNote(localPath, noteData);
+        savedNote = await FileSystemDB.saveNote(localPath, noteData);
       } else {
-        await IndexedDB.saveNote(noteData);
+        savedNote = await IndexedDB.saveNote(noteData);
       }
-      setLocalRefreshTrigger(prev => prev + 1);
+
+      setNotes(prev => {
+        const exists = prev.find(n => n.id === savedNote.id);
+        if (exists) return prev.map(n => n.id === savedNote.id ? savedNote : n);
+        return [...prev, savedNote];
+      });
+      // setLocalRefreshTrigger(prev => prev + 1);
     } catch (error) { console.error("Error saving note:", error); } finally {
       setLoading(false);
       setSelectedNote(null);
@@ -344,6 +363,9 @@ export default function K1ssaper() {
 
   const handleDelete = async (id) => {
     setDeleteConfirmation(null);
+    setPapers(prev => prev.filter(p => p.id !== id));
+    if (selectedPaper?.id === id) setIsNoteDrawerOpen(false);
+
     try {
       if (storageMode === 'supabase') {
         await SupabaseDB.delete(supabaseConfig, id);
@@ -352,8 +374,6 @@ export default function K1ssaper() {
       } else {
         await IndexedDB.delete(id);
       }
-      setLocalRefreshTrigger(prev => prev + 1);
-      if (selectedPaper?.id === id) setIsNoteDrawerOpen(false);
     } catch (error) { console.error("Error deleting:", error); }
   };
 
@@ -364,6 +384,9 @@ export default function K1ssaper() {
   };
 
   const handleDeleteNote = async (id) => {
+    setNotes(prev => prev.filter(n => n.id !== id));
+    if (selectedNote?.id === id) setSelectedNote(null);
+
     try {
       if (storageMode === 'supabase') {
         await SupabaseDB.deleteNote(supabaseConfig, id);
@@ -372,8 +395,6 @@ export default function K1ssaper() {
       } else {
         await IndexedDB.deleteNote(id);
       }
-      setLocalRefreshTrigger(prev => prev + 1);
-      if (selectedNote?.id === id) setSelectedNote(null);
     } catch (error) { console.error("Error deleting note:", error); }
   };
 
@@ -385,6 +406,11 @@ export default function K1ssaper() {
 
     const updatedPaper = { ...paper, notes: newNotes, updatedAt: new Date().toISOString() };
 
+    setPapers(prev => prev.map(p => p.id === id ? updatedPaper : p));
+    if (selectedPaper && selectedPaper.id === id) {
+      setSelectedPaper(updatedPaper);
+    }
+
     if (storageMode === 'supabase') {
       await SupabaseDB.save(supabaseConfig, updatedPaper);
     } else if (isElectron()) {
@@ -392,7 +418,6 @@ export default function K1ssaper() {
     } else {
       await IndexedDB.save(updatedPaper);
     }
-    setLocalRefreshTrigger(prev => prev + 1);
   };
 
   const toggleReadStatus = async (e, paper) => {
@@ -411,8 +436,6 @@ export default function K1ssaper() {
     if (selectedPaper && selectedPaper.id === paper.id) {
       setSelectedPaper(updatedPaper);
     }
-
-    setLocalRefreshTrigger(prev => prev + 1);
   };
 
   const switchLanguage = (newLang) => {
